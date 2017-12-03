@@ -46,12 +46,16 @@ feature_nums = [int(graph.get_tensor_by_name(name+':0').get_shape()[-1]) for nam
 for i in range(len(layers)):
     layer = layers[i].split('/')[1]
     num_features = feature_nums[i]
+
+    if '3x3_bottleneck_pre_relu' not in layer:
+        continue
+
     for j in range(num_features):
         timeline.append((layer, j))
 
 # print([n.name for n in tf.get_default_graph().as_graph_def().node])
 # asd = graph.get_tensor_by_name("import/output2:0")
-# print(asd.shape)
+# print(timeline)
 # sys.exit(0)
 
 # start with a gray image with a little noise
