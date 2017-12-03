@@ -15,8 +15,7 @@ zoom_step = 1
 zoom_px = 3
 iter_n = 250
 iter_rate = 0.06
-layer = 'mixed4d_3x3_bottleneck_pre_relu'
-channel = 139
+timeline = []
 
 # Create output folder
 now = datetime.datetime.now()
@@ -38,10 +37,17 @@ tf.import_graph_def(graph_def, {'input':t_preprocessed})
 layers = [op.name for op in graph.get_operations() if op.type=='Conv2D' and 'import/' in op.name]
 feature_nums = [int(graph.get_tensor_by_name(name+':0').get_shape()[-1]) for name in layers]
 
-print('layers', layers)
-print('feature_nums', feature_nums)
-print('Number of layers', len(layers))
-print('Total number of feature channels:', sum(feature_nums))
+# print('layers', layers)
+# print('feature_nums', feature_nums)
+# print('Number of layers', len(layers))
+# print('Total number of feature channels:', sum(feature_nums))
+
+# Fill timeline
+for i in range(len(layers)):
+    layer = layers[i].split('/')[1]
+    num_features = feature_nums[i]
+    for j in range(num_features):
+        timeline.append((layer, j))
 
 # print([n.name for n in tf.get_default_graph().as_graph_def().node])
 # asd = graph.get_tensor_by_name("import/output2:0")
@@ -146,15 +152,14 @@ def lap_normalize(img, scale_n=4):
     out = lap_merge(tlevels)
     return out[0,:,:,:]
 
-def render_lapnorm(t_obj, img0=img_noise, visfunc=visstd,
-                   iter_n=iter_n, step=iter_rate, lap_n=4):
-    # t_score = tf.reduce_mean(t_obj) # defining the optimization objective
-    # t_grad = tf.gradients(t_score, t_input)[0] # behold the power of automatic
+def get_grad(i):
+    current = timeline[i]
+    t_score = tf.reduce_mean(T(current[0])[:,:,:,current[1]])
+    t_grad = tf.gradients(t_score, t_input)[0]
+    return t_grad
 
-    def get_grad(i):
-        t_score = tf.reduce_mean(T(layer)[:,:,:,i / obj_switch_step])
-        t_grad = tf.gradients(t_score, t_input)[0]
-        return t_grad
+def render_lapnorm(img0=img_noise, visfunc=visstd, step=iter_rate, lap_n=4):
+    iter_n = obj_switch_step * len(timeline)
 
     # build the laplacian normalization graph
     lap_norm_func = tffunc(np.float32)(partial(lap_normalize, scale_n=lap_n))
@@ -181,4 +186,4 @@ def render_lapnorm(t_obj, img0=img_noise, visfunc=visstd,
     # save_jpeg('final.jpg', normalize_image(visstd(img)))
 
 img = np.random.uniform(size=(output_size, output_size, 3)) + 100.0
-render_lapnorm(T(layer)[:,:,:,channel], img)
+render_lapnorm(img)
