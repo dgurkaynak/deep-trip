@@ -153,13 +153,14 @@ def lap_normalize(img, scale_n=4):
     return out[0,:,:,:]
 
 def get_grad(i):
-    current = timeline[i]
+    current = timeline[i / obj_switch_step]
     t_score = tf.reduce_mean(T(current[0])[:,:,:,current[1]])
     t_grad = tf.gradients(t_score, t_input)[0]
     return t_grad
 
 def render_lapnorm(img0=img_noise, visfunc=visstd, step=iter_rate, lap_n=4):
     iter_n = obj_switch_step * len(timeline)
+    print('Estimated iteration: {}'.format(iter_n))
 
     # build the laplacian normalization graph
     lap_norm_func = tffunc(np.float32)(partial(lap_normalize, scale_n=lap_n))
