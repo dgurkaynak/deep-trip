@@ -8,18 +8,18 @@ import datetime
 
 model_fn = 'tensorflow_inception_graph.pb'
 output_size = 768
-tile_size = 768
-obj_switch_step = 75
+tile_size = 384
+obj_switch_step = 60
 save_step = 1
 zoom_step = 1
-zoom_px = 3
-iter_n = 250
-iter_rate = 0.06
+zoom_px = 7
+iter_rate = 1.5
 timeline = []
 
 # Create output folder
 now = datetime.datetime.now()
 output_dir = now.strftime('output/%Y%m%d_%H%M%S')
+# output_dir = now.strftime('output/20171204_122826')
 if not os.path.exists(output_dir):
     os.makedirs(output_dir)
 
@@ -47,7 +47,7 @@ for i in range(len(layers)):
     layer = layers[i].split('/')[1]
     num_features = feature_nums[i]
 
-    if '3x3_bottleneck_pre_relu' not in layer:
+    if '5b_5x5_bottleneck_pre_relu' not in layer:
         continue
 
     for j in range(num_features):
@@ -72,6 +72,7 @@ def T(layer):
 def save_jpeg(jpeg_file, image):
     pil_image = PIL.Image.fromarray(image)
     pil_image.save(jpeg_file)
+    pil_image.close()
 
 def normalize_image(image):
     image = np.clip(image, 0, 1)
@@ -156,13 +157,23 @@ def lap_normalize(img, scale_n=4):
     out = lap_merge(tlevels)
     return out[0,:,:,:]
 
+latest_timeline_item = None
+latest_grad = None
 def get_grad(i):
+    global latest_timeline_item, latest_grad
     current = timeline[i / obj_switch_step]
+    if latest_timeline_item is not None and latest_timeline_item == current:
+        return latest_grad
+
     t_score = tf.reduce_mean(T(current[0])[:,:,:,current[1]])
     t_grad = tf.gradients(t_score, t_input)[0]
+
+    latest_timeline_item = current
+    latest_grad = t_grad
+
     return t_grad
 
-def render_lapnorm(img0=img_noise, visfunc=visstd, step=iter_rate, lap_n=4):
+def render_lapnorm(img0=img_noise, visfunc=visstd, step=iter_rate, lap_n=1):
     iter_n = obj_switch_step * len(timeline)
     print('Estimated iteration: {}'.format(iter_n))
 
@@ -170,25 +181,28 @@ def render_lapnorm(img0=img_noise, visfunc=visstd, step=iter_rate, lap_n=4):
     lap_norm_func = tffunc(np.float32)(partial(lap_normalize, scale_n=lap_n))
 
     img = img0.copy()
-    for i in range(iter_n):
-        # g = calc_grad_tiled(img, t_grad)
-        g = calc_grad_tiled(img, get_grad(i))
-        g = lap_norm_func(g)
-        img += g*step
-        print('Iteration: {}'.format(i + 1))
-
+    for i in range(0, iter_n):
+    # for i in range(1576, iter_n):
         if i > 0 and i % zoom_step == 0:
             new_size = output_size + (2 * zoom_px)
             img = resize(img, (new_size, new_size))
             img = img[zoom_px:zoom_px+output_size, zoom_px:zoom_px+output_size]
 
+        g = calc_grad_tiled(img, get_grad(i))
+        g = lap_norm_func(g)
+        img += g*step
+
         if i % save_step == 0:
-            print('Saving...')
             img_save = normalize_image(visstd(img))
             save_jpeg('{}/{}.jpg'.format(output_dir, str(i).zfill(10)), img_save)
             # save_jpeg('output.jpg'.format(output_dir, str(i).zfill(10)), img_save)
 
+        current = timeline[i / obj_switch_step]
+        print('Iteration: {} ({}, {})'.format(i + 1, current[0], current[1]))
+
     # save_jpeg('final.jpg', normalize_image(visstd(img)))
 
-img = np.random.uniform(size=(output_size, output_size, 3)) + 100.0
+# img = np.random.uniform(size=(output_size, output_size, 3)) + 100.0
+# img = np.float32(PIL.Image.open('{}/{}.jpg'.format(output_dir, str(1575).zfill(10))))
+img = np.float32(PIL.Image.open('input.jpg'))
 render_lapnorm(img)
